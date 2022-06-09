@@ -3,6 +3,7 @@
 //
 
 #include <stdio.h>
+#include <unistd.h>
 #include "../DLL/dll.h"
 #include "sync.h"
 
@@ -47,6 +48,36 @@ void process_sync_mesg(dll_t *dll, sync_msg_t *sync_msg){
     }
     else{
         node = find_mac(dll,sync_msg->msg_body.mac_list_entry.mac);
+        switch (sync_msg->op_code) {
+            case CREATE:
+                if (node == dll->head ){
+                    append(dll,&sync_msg->msg_body.mac_list_entry);
+                    node = find_mac(dll, sync_msg->msg_body.mac_list_entry.mac);
+                    if(node != dll->head){
+                        mac_list_entry_t entry = *((mac_list_entry_t *) node->data);
+                        printf("Added MAC: %s", entry.mac);
+                        char ip[IP_ADDR_LEN];
+                        if (get_IP(entry.mac, ip) != -1) {
+                            printf("IP: %s", ip);
+                        }
+                        printf("\n");
+                    }
+                }
+                break;
+            case DELETE:
+                if (node != dll->head){
+                    del(dll,node);
+                    node = find_mac(dll, sync_msg->msg_body.mac_list_entry.mac);
+                    if(node == dll->head){
+                        printf("Deleted: MAC: %s\n", sync_msg->msg_body.mac_list_entry.mac);
+                        unlink(sync_msg->msg_body.mac_list_entry.mac); // deallocate shared memory region corresponding to this MAC key
+                    }
+                }
+                break;
+            default:
+                break;
+
+        }
 
     }
 };
