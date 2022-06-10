@@ -24,6 +24,8 @@ extern int store_IP(const char *mac, const char *ip);
 
 
 int connection_socket;
+int synchronized; /*Indicate that if the server is sending all the update to clients*/
+
 /* Server's copies of network data structures*/
 dll_t *routing_table;
 dll_t *mac_list;
@@ -251,9 +253,16 @@ void update_new_client(int data_socket, LCODE l_code,char *op, sync_msg_t *sync_
 
         create_sync_message(op,sync_msg,1);
         write(data_socket,sync_msg, sizeof(sync_msg_t));
+        write(data_socket, &synchronized, sizeof(int));
 
         curr = curr->next;
     }
+
+    /*send dummy syn_msg to inform client that all updates are sent.*/
+    sync_msg->op_code = NONE;
+    synchronized = l_code == L3? RT:ML;
+    write(data_socket,sync_msg, sizeof(sync_msg_t));
+    write(data_socket, &synchronized, sizeof(int));
 }
 
 

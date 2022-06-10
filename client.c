@@ -10,18 +10,37 @@
 
 #include "Sync/sync.h"
 #include "DLL/dll.h"
-//
-//void display_table(sync_msg_t sync_msg){
-//    if (sync_msg.l_code==L3){
-//        printf("The routing table is up to date, show it? [y/n]\n");
-//
-//    }
-//
-//}
+
 
 dll_t *routing_table;
 dll_t *mac_list;
 
+
+void display_table(int synchronized){
+    char c;
+    switch(synchronized){
+        case RT:
+            printf("Routing table is up to date. Would you like to see it?(y/n)\n");
+            c = getchar();
+//            scanf("%c", &flush);
+            if (c == 'y') {
+                display_routing_table(routing_table);
+            }
+            break;
+        case ML:
+            printf("MAC list is up to date. Would you like to see it?(y/n)\n");
+            c = getchar();
+//            scanf("%c", &flush);
+            if (c == 'y') {
+                display_mac_list(mac_list);
+            }
+            break;
+
+        default:
+            break;
+    }
+
+}
 
 int main(){
     struct sockaddr_un name;
@@ -48,6 +67,7 @@ int main(){
     }
 
     while(1){
+        int synchronized;
 
         sync_msg_t *syn_msg=calloc(1, sizeof(sync_msg_t));
         ret = read(data_socket,syn_msg, sizeof(sync_msg_t));
@@ -55,14 +75,20 @@ int main(){
             perror("Read sync_msg");
             exit(1);
         }
+        ret = read(data_socket,&synchronized, sizeof(int));
+        if(ret == -1){
+            perror("Read synchronized");
+            exit(1);
+        }
+
         if(syn_msg->l_code == L3){
             process_sync_mesg(routing_table,syn_msg);
         }
         else{
-            process_sync_mesg(mac_list, syn_msg)
+            process_sync_mesg(mac_list, syn_msg);
         }
-        display_routing_table(routing_table);
-        display_mac_list(mac_list);
+
+        display_table(synchronized);
     }
 
 
