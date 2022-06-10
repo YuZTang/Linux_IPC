@@ -7,7 +7,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "Sync/sync.h"
+#include "DLL/dll.h"
 //
 //void display_table(sync_msg_t sync_msg){
 //    if (sync_msg.l_code==L3){
@@ -17,14 +19,17 @@
 //
 //}
 
+dll_t *routing_table;
+dll_t *mac_list;
+
 
 int main(){
     struct sockaddr_un name;
     int data_socket;
     int ret;
 
-
-//    unlink(SOCKET_NAME);
+    routing_table = init_dll();
+    mac_list = init_dll();
 
     data_socket = socket(AF_UNIX,SOCK_STREAM,0);
     if (data_socket==-1){
@@ -50,10 +55,15 @@ int main(){
             perror("Read sync_msg");
             exit(1);
         }
-
-
+        if(syn_msg->l_code == L3){
+            process_sync_mesg(routing_table,syn_msg);
+        }
+        else{
+            process_sync_mesg(mac_list, syn_msg)
+        }
+        display_routing_table(routing_table);
+        display_mac_list(mac_list);
     }
-
 
 
 
