@@ -7,6 +7,7 @@
 #include <sys/un.h>
 #include <ctype.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 
 #include "DLL/dll.h"
@@ -25,6 +26,7 @@ extern int store_IP(const char *mac, const char *ip);
 
 int connection_socket;
 int synchronized; /*Indicate that if the server is sending all the update to clients*/
+int loop = 1; // indicates if server is still running to clients
 
 /* Server's copies of network data structures*/
 dll_t *routing_table;
@@ -99,6 +101,17 @@ void refresh_fd_set(fd_set *fd_set_ptr){
     }
 }
 
+/* Inform clients to flush their routing tables and mac lists*/
+void flush_clients() {
+    int i;
+    for(i = 0; i < MAX_CLIENTS; i++) {
+        int pid = client_pid_set[i];
+        if (pid != -1) {
+            kill(pid, SIGUSR1);
+        }
+    }
+}
+
 /* Helper function for isValidMask */
 int digits_only(const char *s)
 {
@@ -109,7 +122,6 @@ int digits_only(const char *s)
     return 1;
 }
 
-
 /* Checks if IP address is valid */
 int isValidIP(const char *addr) {
     struct sockaddr_in sa;
@@ -118,7 +130,7 @@ int isValidIP(const char *addr) {
 
 /* Mask is valid if it is a string that can be converted to an integer within [0, 32] */
 int isValidMask(const char *mask) {
-    return digits_only(mask) && atoi(mask) <= 32;
+    return digits_only(mask) && atoi(mask) <= MAX_MASK;
 }
 
 /* Checks if a given string represents a valid mac address in the format XX:XX:XX:XX:XX:XX, where each X represents a hexidecimal digit 0-9 or a-f */
@@ -169,6 +181,15 @@ int create_sync_message(char *operation, sync_msg_t *sync_msg, int silent) {
                 return 0;
             case 'F':
                 sync_msg->op_code=NONE;
+
+                flush_clients();
+                deinit_dll(routing_table);
+                deinit_dll(mac_list);
+
+                routing_table = init_dll();
+                mac_list = init_dll();
+                return 0;
+
             default:
                 fprintf(stderr, "Invalid operation: unknown op code\n");
                 return -1;
@@ -252,20 +273,50 @@ void update_new_client(int data_socket, LCODE l_code,char *op, sync_msg_t *sync_
         }
 
         create_sync_message(op,sync_msg,1);
+
         write(data_socket,sync_msg, sizeof(sync_msg_t));
         write(data_socket, &synchronized, sizeof(int));
+        write(data_socket, &loop , sizeof(int));
 
         curr = curr->next;
     }
 
     /*send dummy syn_msg to inform client that all updates are sent.*/
     sync_msg->op_code = NONE;
-    synchronized = l_code == L3? RT:ML;
+    synchronized = l_code == L3 ? RT : ML;
     write(data_socket,sync_msg, sizeof(sync_msg_t));
     write(data_socket, &synchronized, sizeof(int));
+    write(data_socket, &loop, sizeof(int));
+
 }
 
+/* Break out of main infinite loop and inform clients of shutdown to exit cleanly. */
+void signal_handler(int signal_num){
+    if (signal_num == SIGINT){
+        int i;
+        sync_msg_t sync_msg;
+        synchronized = WAIT;
+        loop = 0;
+        for (i=2; i<MAX_CLIENTS; i++){
+            int commu_socket_fd = monitored_fd_set[i];
+            if(commu_socket_fd!=-1){
+                write(commu_socket_fd, &sync_msg, sizeof(sync_msg_t));
+                write(commu_socket_fd, &synchronized, sizeof(int));
+                write(commu_socket_fd, &loop , sizeof(int));
 
+            }
+        }
+
+        /*clean up all resource*/
+        deinit_dll(routing_table);
+        deinit_dll(mac_list);
+        close(connection_socket);
+        remove_from_monitored_fd_set(connection_socket);
+        unlink(SOCKET_NAME);
+        exit(0);
+
+    }
+}
 int main() {
     struct sockaddr_un name;
     int ret;
@@ -309,12 +360,14 @@ int main() {
 
     add_to_monitored_fd_set(connection_socket);
 
+    signal(SIGINT,signal_handler);
+
     while(1){
         char op[OP_LEN];
         sync_msg_t *sync_msg = calloc(1, sizeof(sync_msg_t));
 
         refresh_fd_set(&readfds);
-
+        printf("\n");
         printf("Please select from the following options:\n");
         printf("1.CREATE <Destination IP> <Mask (0-32)> <Gateway IP> <OIF>\n");
         printf("2.UPDATE <Destination IP> <Mask (0-32)> <New Gateway IP> <New OIF>\n");
@@ -333,8 +386,19 @@ int main() {
                 perror("accept");
                 exit(EXIT_FAILURE);
             }
+
+            pid_t pid;
+            if (read(data_socket, &pid, sizeof(pid_t)) == -1) {
+                perror("read pid");
+                exit(1);
+            }
+
+
             add_to_monitored_fd_set(data_socket);
+            add_to_client_pid_set(pid);
+
             update_new_client(data_socket,L3,op,sync_msg);
+            update_new_client(data_socket,L2,op,sync_msg);
         }
         else if(FD_ISSET(0,&readfds)) {
             ret = read(0, op, OP_LEN - 1);
@@ -348,9 +412,11 @@ int main() {
             if (!create_sync_message(op, sync_msg,0)) {
                 if(sync_msg->l_code==L3){
                     process_sync_mesg(routing_table, sync_msg);
+                    synchronized = RT;
                 }
                 else{
                     process_sync_mesg(mac_list, sync_msg);
+                    synchronized = ML;
                 }
             }
 
@@ -359,12 +425,33 @@ int main() {
                 comm_socket_fd = monitored_fd_set[i];
                 if (comm_socket_fd != -1) {
                     write(comm_socket_fd, sync_msg, sizeof(sync_msg_t));
+                    write(comm_socket_fd, &synchronized, sizeof(int));
+                    write(comm_socket_fd, &loop, sizeof(int));
                 }
             }
         }
-//        else{
-//            for(int)
-//        }
+        else{
+            int i;
+            for(i = 2; i<MAX_CLIENTS; i++){
+                if(FD_ISSET(monitored_fd_set[i],&readfds)){
+                    int comm_socket_fd = monitored_fd_set[i];
+                    int done;
+                    ret = read(comm_socket_fd, &done, sizeof(int));
+                    if(done == 1){
+                        remove_from_monitored_fd_set(comm_socket_fd);
+                        remove_from_client_pid_set(client_pid_set[i]);
+                        close(comm_socket_fd);
+                    }
+                    else if(ret == -1){
+                        perror("Reading done");
+                        exit(1);
+                    }
+                    else{
+                        printf("%d\n", done);
+                    }
+                }
+            }
+        }
     }
     return 0;
 }
