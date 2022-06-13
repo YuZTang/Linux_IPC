@@ -401,7 +401,7 @@ int main() {
             update_new_client(data_socket,L3,op,sync_msg);
             update_new_client(data_socket,L2,op,sync_msg);
         }
-        else if(FD_ISSET(0,&readfds)) {
+        else if(FD_ISSET(0,&readfds)) { // server stdin
             ret = read(0, op, OP_LEN - 1);
             op[strcspn(op, "\r\n")] = 0; // flush new line
             if (ret == -1) {
@@ -433,12 +433,13 @@ int main() {
         }
         else{
             int i;
-            for(i = 2; i<MAX_CLIENTS; i++){
+            for(i = 2; i<MAX_CLIENTS; i++){/* Check active status of clients */
                 if(FD_ISSET(monitored_fd_set[i],&readfds)){
                     int comm_socket_fd = monitored_fd_set[i];
                     int done;
                     ret = read(comm_socket_fd, &done, sizeof(int));
                     if(done == 1){
+                        printf("Process %d disconnected\n",client_pid_set[i] );
                         remove_from_monitored_fd_set(comm_socket_fd);
                         remove_from_client_pid_set(client_pid_set[i]);
                         close(comm_socket_fd);

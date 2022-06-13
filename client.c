@@ -30,6 +30,8 @@ void signal_handler(int signum){
         exit(0);
     }
     else if(signum == SIGUSR1){
+
+        printf("The server is shut down\n");
         deinit_dll(routing_table);
         deinit_dll(mac_list);
 
