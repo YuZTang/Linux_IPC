@@ -397,6 +397,7 @@ int main() {
 
             add_to_monitored_fd_set(data_socket);
             add_to_client_pid_set(pid);
+            printf("A new client connected: %d", pid);
 
             update_new_client(data_socket,L3,op,sync_msg);
             update_new_client(data_socket,L2,op,sync_msg);
