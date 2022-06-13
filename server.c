@@ -440,7 +440,7 @@ int main() {
                     int done;
                     ret = read(comm_socket_fd, &done, sizeof(int));
                     if(done == 1){
-                        printf("Process %d disconnected\n",client_pid_set[i] );
+                        printf("Process %d disconnected\n",client_pid_set[i-2] ); //i-2 because there are no stdin and connection_socket in the pid_set
                         remove_from_monitored_fd_set(comm_socket_fd);
                         remove_from_client_pid_set(client_pid_set[i]);
                         close(comm_socket_fd);
