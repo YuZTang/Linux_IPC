@@ -266,7 +266,7 @@ void update_new_client(int data_socket, LCODE l_code,char *op, sync_msg_t *sync_
         mac_list_entry_t mc_entry = *((mac_list_entry_t*)curr->data);
 //        sync_msg->op_code=CREATE;
         if(l_code==L3){
-            sprintf(op,"C %s %u %s %s",rt_entry.dest,rt_entry.mask,rt_entry.gw,rt_entry.gw);
+            sprintf(op,"C %s %u %s %s",rt_entry.dest,rt_entry.mask,rt_entry.gw,rt_entry.oif);
         }
         else{
             sprintf(op,"C %s",mc_entry.mac);
@@ -365,6 +365,7 @@ int main() {
     while(1){
         char op[OP_LEN];
         sync_msg_t *sync_msg = calloc(1, sizeof(sync_msg_t));
+        synchronized=WAIT;
 
         refresh_fd_set(&readfds);
         printf("\n");
