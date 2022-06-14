@@ -36,7 +36,6 @@ dll_t *mac_list;
 int monitored_fd_set[MAX_CLIENTS];
 pid_t client_pid_set[MAX_CLIENTS]; // array of client process id's
 
-
 /*Remove all the FDs and client pid's, if any, from the the array*/
 void intitiaze_monitor_fd_and_client_pid_set(){
     int i = 0;
